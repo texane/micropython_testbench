@@ -1,0 +1,23 @@
+diff --git a/py/asmarm.c b/py/asmarm.c
+index 2c389ac..eb8b2b9 100644
+--- a/py/asmarm.c
++++ b/py/asmarm.c
+@@ -85,6 +85,7 @@ void asm_arm_start_pass(asm_arm_t *as, uint pass) {
+ void asm_arm_end_pass(asm_arm_t *as) {
+     if (as->pass == ASM_ARM_PASS_EMIT) {
+ #ifdef __arm__
++#if 0 /* FIXME */
+         // flush I- and D-cache
+         asm volatile(
+                 "0:"
+@@ -93,6 +94,10 @@ void asm_arm_end_pass(asm_arm_t *as) {
+                 "mov r0, #0\n"
+                 "mcr p15, 0, r0, c7, c7, 0\n"
+                 : : : "r0", "cc");
++#else
++       char* const p = (char*)as->code_base;
++       __builtin___clear_cache(p, p + as->code_size);
++#endif
+ #endif
+     }
+ }
