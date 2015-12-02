@@ -212,6 +212,30 @@ static void py_destroy_var(py_var_t* v)
   free(v);
 }
 
+static void py_print_var(py_var_t* v)
+{
+  size_t i;
+
+  for (i = 0; i != v->dim; ++i)
+  {
+    if (v->flags & PY_FLAG_INT) printf(" %d", v->data.i[i]);
+    else printf(" %lf", v->data.f[i]);
+  }
+  printf("\n");
+}
+
+static void py_print_out_vars(py_handle_t* py)
+{
+  size_t i;
+
+  for (i = 0; i != py->nvar; ++i)
+  {
+    py_var_t* const v = py->vars[i];
+    if ((v->flags & PY_FLAG_OUT) == 0) continue ;
+    py_print_var(v);
+  }
+}
+
 static int py_compile(py_handle_t* py, const char* s)
 {
   static const mp_parse_input_kind_t input_kind = MP_PARSE_FILE_INPUT;
@@ -433,10 +457,9 @@ struct test_desc
 {						\
  .name = #__name,				\
  .py_str = __name ## _py,			\
- .post_compile = __name ## _post_compile,		\
+ .post_compile = __name ## _post_compile,	\
  .pre_exec = __name ## _pre_exec,		\
  .c = __name ## _c,				\
- .print = __name ## _print			\
 }
 
 #define TEST_DESC_INVALID			\
@@ -511,17 +534,6 @@ static int matmul_pre_exec(py_handle_t* py)
   return 0;
 }
 
-static void matmul_print(py_handle_t* py)
-{
-  const size_t n = py->vars[0]->dim;
-  mp_float_t* const y = py->vars[0]->data.f;
-
-  size_t i;
-
-  for (i = 0; i != n; ++i) printf(" %lf", y[i]);
-  printf("\n");
-}
-
 #endif /* matmul */
 
 
@@ -531,12 +543,11 @@ static const char* hi_py = TEST_LINE("print('hi')");
 static void hi_c(py_handle_t* py) {}
 static int hi_post_compile(py_handle_t* py) { return 0; }
 static int hi_pre_exec(py_handle_t* py) { return 0; }
-static void hi_print(py_handle_t* py) { }
 
 #endif /* hi */
 
 
-#if 1 /* hix */
+#if 0 /* hix */
 
 static const char* hix_py = TEST_LINE("print('hi ' + str(_x))");
 
@@ -553,8 +564,6 @@ static int hix_pre_exec(py_handle_t* py)
   py->vars[0]->data.i[0] = 42;
   return 0;
 }
-
-static void hix_print(py_handle_t* py) {}
 
 #endif /* hix */
 
@@ -740,7 +749,7 @@ int main(int ac, const char** av)
     ticks[1] = rdtsc();
     us[0] = (double)ticks_to_us(sub_ticks(ticks[0], ticks[1])) / 1000000.0;
 
-    t->print(&py);
+    py_print_out_vars(&py);
 
     /* execute c version */
     ticks[0] = rdtsc();
@@ -751,7 +760,8 @@ int main(int ac, const char** av)
     }
     ticks[1] = rdtsc();
     us[1] = (double)ticks_to_us(sub_ticks(ticks[0], ticks[1])) / 1000000.0;
-    t->print(&py);
+
+    py_print_out_vars(&py);
 
     printf("py = %lfus, c = %lfus\n", us[0], us[1]);
 
