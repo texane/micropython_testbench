@@ -2,8 +2,7 @@
 
 
 export FFI_DIR=$HOME/segfs/repo/libffi/libffi-3.2.1/arm-unknown-none
-# export MICROPY_DIR=$HOME/segfs/repo/micropython
-export MICROPY_DIR=/buffer/PCLAB2451/lementec/repo/micropython.latest
+export MICROPY_DIR=/buffer/PCLAB2451/lementec/repo/micropython
 export CROSS_COMPILE=/segfs/linux/dance_sdk/toolchain/arm-buildroot-linux-uclibcgnueabi/bin/arm-buildroot-linux-uclibcgnueabi-
 
 #
