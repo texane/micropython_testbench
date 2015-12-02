@@ -55,11 +55,10 @@ static void mp_obj_set_float(mp_obj_t o, mp_float_t x)
 
 typedef struct py_var
 {
-  qstr name;
-
   uint32_t flags;
   size_t dim;
-  
+
+  qstr name;  
   mp_obj_t list;
   mp_obj_t* items;
   mp_obj_t index;
@@ -68,13 +67,7 @@ typedef struct py_var
   {
     mp_float_t* f;
     mp_int_t* i;
-  } in;
-
-  union
-  {
-    mp_float_t* f;
-    mp_int_t* i;
-  } out;
+  } data;
 
 } py_var_t;
 
@@ -95,9 +88,6 @@ typedef struct py_handle
 
 static int py_init(void)
 {
-  static mp_uint_t path_num = 1;
-  mp_obj_t *path_items;
-
   mp_stack_set_limit(40000 * (BYTES_PER_WORD / 4));
 
 #if MICROPY_ENABLE_GC
@@ -108,10 +98,14 @@ static int py_init(void)
 
   mp_init();
 
+#if 0
+  static mp_uint_t path_num = 1;
+  mp_obj_t *path_items;
   mp_obj_list_init(MP_OBJ_TO_PTR(mp_sys_path), path_num);
   mp_obj_list_get(mp_sys_path, &path_num, &path_items);
   path_items[0] = MP_OBJ_NEW_QSTR(MP_QSTR_);
   mp_obj_list_init(MP_OBJ_TO_PTR(mp_sys_argv), 0);
+#endif
 
   return 0;
 }
@@ -131,8 +125,7 @@ static py_var_t* py_create_var
   mp_obj_t obj;
   size_t i;
   size_t size;
-  void** inp;
-  void** outp;
+  void** data;
 
   v = malloc(sizeof(py_var_t));
   if (v == NULL) goto on_error_0;
@@ -156,12 +149,11 @@ static py_var_t* py_create_var
     for (i = 0; i != dim; ++i) v->items[i] = mp_obj_new_float(0.0);
   }
 
-  v->index = MP_OBJ_NEW_SMALL_INT(0);
-
   /* store default values so that no crash due to undefined variable */
 
   if (v->flags & PY_FLAG_ARRAY)
   {
+    v->index = MP_OBJ_NEW_SMALL_INT(0);
     v->list = mp_obj_new_list((mp_uint_t)v->dim, v->items);
     obj = v->list;
   }
@@ -175,32 +167,19 @@ static py_var_t* py_create_var
   if (v->flags & PY_FLAG_FLOAT)
   {
     size = dim * sizeof(mp_float_t);
-    inp = (void**)&v->in.f;
-    outp = (void**)&v->out.f;
+    data = (void**)&v->data.f;
   }
   else
   {
     size = dim * sizeof(mp_int_t);
-    inp = (void**)&v->in.i;
-    outp = (void**)&v->out.i;
+    data = (void**)&v->data.i;
   }
 
-  if (v->flags & PY_FLAG_IN)
-  {
-    *inp = malloc(size);
-    if (*inp == NULL) goto on_error_2;
-  }
-
-  if (v->flags & PY_FLAG_OUT)
-  {
-    *outp = malloc(size);
-    if (*outp == NULL) goto on_error_3;
-  }
+  *data = malloc(size);
+  if (*data == NULL) goto on_error_2;
   
   return v;
 
- on_error_3:
-  if (v->flags & PY_FLAG_IN) free(*inp);
  on_error_2:
   free(v->items);
  on_error_1:
@@ -223,23 +202,12 @@ static py_var_t* py_create_array
 
 static void py_destroy_var(py_var_t* v)
 {
-  void** inp;
-  void** outp;
+  void* data;
 
-  if (v->flags & PY_FLAG_FLOAT)
-  {
-    inp = (void**)&v->in.f;
-    outp = (void**)&v->out.f;
-  }
-  else
-  {
-    inp = (void**)&v->in.i;
-    outp = (void**)&v->out.i;
-  }
+  if (v->flags & PY_FLAG_FLOAT) data = (void*)v->data.f;
+  else data = (void*)v->data.i;
 
-  if (v->flags & PY_FLAG_IN) free(*inp);
-  if (v->flags & PY_FLAG_OUT) free(*outp);
-
+  free(data);
   free(v->items);
   free(v);
 }
@@ -285,6 +253,60 @@ static int py_close(py_handle_t* py)
   return 0;
 }
 
+#if 0 /* does not work, should recompile entirely */
+static int py_collect(py_handle_t* py)
+{
+  mp_obj_t obj;
+  size_t i;
+  size_t j;
+
+  gc_collect();
+
+  for (i = 0; i != py->nvar; ++i)
+  {
+    py_var_t* const v = py->vars[i];
+
+    v->name = qstr_from_str(v->_name);
+
+    if (v->flags & PY_FLAG_INT)
+    {
+      for (j = 0; j != v->dim; ++j)
+      {
+	if (v->flags & PY_FLAG_IN) obj = MP_OBJ_NEW_SMALL_INT(v->in.i[j]);
+	else obj = MP_OBJ_NEW_SMALL_INT(v->data.i[j]);
+	v->items[j] = obj;
+      }
+    }
+    else
+    {
+      for (j = 0; j != v->dim; ++j)
+      {
+	if (v->flags & PY_FLAG_IN) obj = mp_obj_new_float(v->in.f[j]);
+	else obj = mp_obj_new_float(v->data.f[j]);
+	v->items[j] = obj;
+      }
+    }
+
+    /* store default values so that no crash due to undefined variable */
+
+    if (v->flags & PY_FLAG_ARRAY)
+    {
+      v->index = MP_OBJ_NEW_SMALL_INT(0);
+      v->list = mp_obj_new_list((mp_uint_t)v->dim, v->items);
+      obj = v->list;
+    }
+    else
+    {
+      obj = v->items[0];
+    }
+
+    mp_store_name(v->name, obj);
+  }
+
+  return 0;
+}
+#endif /* py_collect */
+
 static int py_store_vars(py_handle_t* py)
 {
   mp_obj_t obj;
@@ -303,7 +325,7 @@ static int py_store_vars(py_handle_t* py)
       {
 	for (j = 0; j != v->dim; ++j)
 	{
-	  v->items[j] = MP_OBJ_NEW_SMALL_INT(v->in.i[j]);
+	  v->items[j] = MP_OBJ_NEW_SMALL_INT(v->data.i[j]);
 	  v->index = MP_OBJ_NEW_SMALL_INT(j);
 	  mp_obj_list_store(v->list, v->index, v->items[j]);
 	}
@@ -312,7 +334,7 @@ static int py_store_vars(py_handle_t* py)
       {
 	for (j = 0; j != v->dim; ++j)
 	{
-	  mp_obj_set_float(v->items[j], v->in.f[j]);
+	  mp_obj_set_float(v->items[j], v->data.f[j]);
 	  v->index = MP_OBJ_NEW_SMALL_INT(j);
 	  mp_obj_list_store(v->list, v->index, v->items[j]);
 	}
@@ -323,9 +345,9 @@ static int py_store_vars(py_handle_t* py)
     else /* scalar */
     {
       if (v->flags & PY_FLAG_INT)
-	v->items[0] = MP_OBJ_NEW_SMALL_INT(v->in.i[0]);
+	v->items[0] = MP_OBJ_NEW_SMALL_INT(v->data.i[0]);
       else
-	mp_obj_set_float(v->items[0], v->in.f[0]);
+	mp_obj_set_float(v->items[0], v->data.f[0]);
       obj = v->items[0];
     }
 
@@ -365,12 +387,12 @@ static int py_load_vars(py_handle_t* py)
     if (v->flags & PY_FLAG_INT)
     {
       for (j = 0; j != (size_t)n; ++j)
-	v->out.i[j] = mp_obj_get_int(items[j]);
+	v->data.i[j] = mp_obj_get_int(items[j]);
     }
     else
     {
       for (j = 0; j != (size_t)n; ++j)
-	v->out.f[j] = mp_obj_float_get(items[j]);
+	v->data.f[j] = mp_obj_float_get(items[j]);
     }
   }
 
@@ -401,7 +423,7 @@ struct test_desc
 {
   const char* name;
   const char* py_str;
-  int (*pre_compile)(py_handle_t*);
+  int (*post_compile)(py_handle_t*);
   int (*pre_exec)(py_handle_t*);
   void (*c)(py_handle_t*);
   void (*print)(py_handle_t*);
@@ -411,7 +433,7 @@ struct test_desc
 {						\
  .name = #__name,				\
  .py_str = __name ## _py,			\
- .pre_compile = __name ## _pre_compile,		\
+ .post_compile = __name ## _post_compile,		\
  .pre_exec = __name ## _pre_exec,		\
  .c = __name ## _c,				\
  .print = __name ## _print			\
@@ -439,10 +461,10 @@ TEST_LINE("matmul(_y, _a, _x, _b)");
 
 static void matmul_c(py_handle_t* py)
 {
-  mp_float_t* const y = py->vars[0]->out.f;
-  const mp_float_t* const a = py->vars[1]->in.f;
-  const mp_float_t* const x = py->vars[2]->in.f;
-  const mp_float_t* const b = py->vars[3]->in.f;
+  mp_float_t* const y = py->vars[0]->data.f;
+  const mp_float_t* const a = py->vars[1]->data.f;
+  const mp_float_t* const x = py->vars[2]->data.f;
+  const mp_float_t* const b = py->vars[3]->data.f;
   size_t n = py->vars[0]->dim;
 
   size_t i;
@@ -456,7 +478,7 @@ static void matmul_c(py_handle_t* py)
   }
 }
 
-static int matmul_pre_compile(py_handle_t* py)
+static int matmul_post_compile(py_handle_t* py)
 {
   static const size_t n = 8;
 
@@ -473,10 +495,10 @@ static int matmul_pre_exec(py_handle_t* py)
   const size_t n = py->vars[0]->dim;
   const size_t nn = n * n;
 
-  mp_float_t* const y = py->vars[0]->out.f;
-  mp_float_t* const a = py->vars[1]->in.f;
-  mp_float_t* const x = py->vars[2]->in.f;
-  mp_float_t* const b = py->vars[3]->in.f;
+  mp_float_t* const y = py->vars[0]->data.f;
+  mp_float_t* const a = py->vars[1]->data.f;
+  mp_float_t* const x = py->vars[2]->data.f;
+  mp_float_t* const b = py->vars[3]->data.f;
 
   size_t i;
 
@@ -492,7 +514,7 @@ static int matmul_pre_exec(py_handle_t* py)
 static void matmul_print(py_handle_t* py)
 {
   const size_t n = py->vars[0]->dim;
-  mp_float_t* const y = py->vars[0]->out.f;
+  mp_float_t* const y = py->vars[0]->data.f;
 
   size_t i;
 
@@ -507,7 +529,7 @@ static void matmul_print(py_handle_t* py)
 
 static const char* hi_py = TEST_LINE("print('hi')");
 static void hi_c(py_handle_t* py) {}
-static int hi_pre_compile(py_handle_t* py) { return 0; }
+static int hi_post_compile(py_handle_t* py) { return 0; }
 static int hi_pre_exec(py_handle_t* py) { return 0; }
 static void hi_print(py_handle_t* py) { }
 
@@ -520,7 +542,7 @@ static const char* hix_py = TEST_LINE("print('hi ' + str(_x))");
 
 static void hix_c(py_handle_t* py) {}
 
-static int hix_pre_compile(py_handle_t* py)
+static int hix_post_compile(py_handle_t* py)
 {
   py_create_scalar(py, "_x", PY_FLAG_INT | PY_FLAG_IN);
   return 0;
@@ -528,7 +550,7 @@ static int hix_pre_compile(py_handle_t* py)
 
 static int hix_pre_exec(py_handle_t* py)
 {
-  py->vars[0]->in.i[0] = 42;
+  py->vars[0]->data.i[0] = 42;
   return 0;
 }
 
@@ -563,21 +585,21 @@ static void arr_add_vars(py_handle_t* py)
   py_var_t* v;
 
   v = py_create_array(t, "_arr", 4, PY_FLAG_FLOAT | PY_FLAG_INOUT);
-  v->in.f[0] = 42.22;
-  v->in.f[1] = 43.33;
-  v->in.f[2] = 44.44;
-  v->in.f[3] = 45.55;
+  v->data.f[0] = 42.22;
+  v->data.f[1] = 43.33;
+  v->data.f[2] = 44.44;
+  v->data.f[3] = 45.55;
 
 #if 0
   v = py_create_array(t, "_arr2", 1, PY_FLAG_FLOAT | PY_FLAG_INOUT);
-  v->in.f[0] = 42.22;
+  v->data.f[0] = 42.22;
 #endif
 }
 
 static void arr_post(py_handle_t* py)
 {
   size_t i;
-  for (i = 0; i != 4; ++i) printf(" %lf", py->vars[0]->out.py.f[i]);
+  for (i = 0; i != 4; ++i) printf(" %lf", py->vars[0]->data.py.f[i]);
   printf("\n");
 }
 
@@ -688,16 +710,16 @@ int main(int ac, const char** av)
       continue ;
     }
 
-    /* add variables */
-    if (t->pre_compile(&py))
-    {
-      printf("py_post_compile error\n");
-      goto on_close;
-    }
-
     if (py_compile(&py, t->py_str))
     {
       printf("py_compile error\n");
+      goto on_close;
+    }
+
+    /* add variables */
+    if (t->post_compile(&py))
+    {
+      printf("py_post_compile error\n");
       goto on_close;
     }
 
@@ -705,6 +727,8 @@ int main(int ac, const char** av)
     ticks[0] = rdtsc();
     for (j = 0; j != n; ++j)
     {
+      /* if (j && ((j % 100) == 0)) py_collect(&py); */
+
       t->pre_exec(&py);
 
       if (py_execute(&py))
