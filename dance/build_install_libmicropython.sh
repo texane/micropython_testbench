@@ -1,9 +1,20 @@
 #!/usr/bin/env bash
 
 
-FFI_DIR=$HOME/segfs/repo/libffi/libffi-3.2.1/arm-unknown-none
-export MICROPY_DIR=$HOME/segfs/repo/micropython
-CROSS_COMPILE=/segfs/linux/dance_sdk/toolchain/arm-buildroot-linux-uclibcgnueabi/bin/arm-buildroot-linux-uclibcgnueabi-
+export FFI_DIR=$HOME/segfs/repo/libffi/libffi-3.2.1/arm-unknown-none
+# export MICROPY_DIR=$HOME/segfs/repo/micropython
+export MICROPY_DIR=/buffer/PCLAB2451/lementec/repo/micropython.latest
+export CROSS_COMPILE=/segfs/linux/dance_sdk/toolchain/arm-buildroot-linux-uclibcgnueabi/bin/arm-buildroot-linux-uclibcgnueabi-
+
+#
+# apply patches
+
+THIS_DIR=$PWD
+PATCH_DIR=$THIS_DIR/../patch
+cd $MICROPY_DIR
+for p in $PATCH_DIR/*.patch; do < $p patch -p1; done
+cd $THIS_DIR
+
 
 #
 # build libmicropython and headers
