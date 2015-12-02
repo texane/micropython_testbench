@@ -11,7 +11,7 @@ export CROSS_COMPILE=/segfs/linux/dance_sdk/toolchain/arm-buildroot-linux-uclibc
 THIS_DIR=$PWD
 PATCH_DIR=$THIS_DIR/../patch
 cd $MICROPY_DIR
-for p in $PATCH_DIR/*.patch; do < $p patch -p1; done
+for p in $PATCH_DIR/*.patch; do < $p patch -N -p1; done
 cd $THIS_DIR
 
 
