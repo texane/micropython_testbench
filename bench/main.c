@@ -473,7 +473,6 @@ struct test_desc
 #if 1 /* matmul */
 
 static const char* matmul_py =						\
-TEST_LINE("@micropython.viper")						\
 TEST_LINE("def matmul(y, a, x, b):")					\
 TEST_LINE("    n = int(len(y))")					\
 TEST_LINE("    for i in range(0, n):")					\
