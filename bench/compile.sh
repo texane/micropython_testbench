@@ -1,6 +1,6 @@
 CROSS_COMPILE=/segfs/linux/dance_sdk/toolchain/arm-buildroot-linux-uclibcgnueabi/bin/arm-buildroot-linux-uclibcgnueabi-
 
-MICROPY_INSTALL_DIR=$HOME/segfs/repo/micropython/bench/install_dir
+MICROPY_INSTALL_DIR=../dance/install_dir
 MICROPY_INC_DIR=$MICROPY_INSTALL_DIR/include
 MICROPY_LIB_DIR=$MICROPY_INSTALL_DIR/lib
 
