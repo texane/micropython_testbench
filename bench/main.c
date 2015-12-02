@@ -667,7 +667,6 @@ int main(int ac, const char** av)
   size_t j;
   uint64_t ticks[2];
   double us[2];
-  gc_info_t info[2];
 
   if (py_init())
   {
@@ -702,8 +701,6 @@ int main(int ac, const char** av)
       goto on_close;
     }
 
-    gc_info(&info[0]);
-
     /* execute python version */
     ticks[0] = rdtsc();
     for (j = 0; j != n; ++j)
@@ -715,14 +712,9 @@ int main(int ac, const char** av)
 	printf("py_execute error (%zu)\n", j);
 	goto on_close;
       }
-
-      if (j == 1) gc_info(&info[0]);
     }
     ticks[1] = rdtsc();
     us[0] = (double)ticks_to_us(sub_ticks(ticks[0], ticks[1])) / 1000000.0;
-
-    gc_collect();
-    gc_info(&info[1]);
 
     t->print(&py);
 
@@ -738,8 +730,6 @@ int main(int ac, const char** av)
     t->print(&py);
 
     printf("py = %lfus, c = %lfus\n", us[0], us[1]);
-    printf("gc.used %u %u\n", info[0].used, info[1].used);
-    printf("gc.free %u %u\n", info[0].free, info[1].free);
 
   on_close:
     py_close(&py);
